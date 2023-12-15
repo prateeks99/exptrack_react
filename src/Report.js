@@ -5,26 +5,24 @@ import EditIcon from './icons/editIcon.svg'
 import CancelIcon from './icons/cancelIcon.svg'
 import SaveIcon from './icons/saveIcon.svg'
 
-function Report() {
+function Report({username}) {
     const [expenses, setExpenses] = useState([]);
     const [name, setName] = useState('');
+    const [type, setType] = useState('expense');
     const [amount, setAmount] = useState('');
-    const [category, setCategory] = useState('');
-    const [sortBy, setSortBy] = useState('time'); 
-    const [sortOrder, setSortOrder] = useState('asc'); 
+    const [category, setCategory] = useState('misc');
     const [editingId, setEditingId] = useState(null);
     const [editingName, setEditingName] = useState('');
     const [editingAmount, setEditingAmount] = useState('');
     const [editingCategory, setEditingCategory] = useState('');
-
-
+    
     useEffect(() => {
         fetchExpenses();
     }, []);
 
     const fetchExpenses = () => {
         // GET request
-        fetch('http://localhost:8080/api/expenses')
+        fetch(`http://localhost:8080/api/expenses/${username}`)
             .then((response) => response.json())
             .then((data) => setExpenses(data))
             .catch((error) => console.error('Error fetching expenses:', error));
@@ -33,12 +31,18 @@ function Report() {
     const addExpense = () => {
         if (name && amount) {
             // POST Request
-            fetch('http://localhost:8080/api/expenses', {
+            fetch(`http://localhost:8080/api/expenses/${username}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ name, amount, category }),
+                body: JSON.stringify({
+                  id: username,
+                  name: name,
+                  amount: amount,
+                  category: category,
+                  type: type,
+              }),
             })
             .then((response) => response.json())
             .then((addedExpense) => {
@@ -46,19 +50,20 @@ function Report() {
                 setName('');
                 setAmount('');
                 setCategory('');
+                setType('expense');
             })
             .catch((error) => console.error('Error adding expense:', error));
         }
     };
 
-    const deleteExpense = (id) => {
+    const deleteExpense = (expenseid) => {
         // DELETE Request
-        fetch(`http://localhost:8080/api/expenses/${id}`, {
+        fetch(`http://localhost:8080/api/expenses/${username}/${expenseid}`, {
             method: 'DELETE',
         })
         .then((response) => {
             if (response.status === 204) {
-                fetchExpenses(); // Refresh the expense list
+                fetchExpenses();
             } else {
                 console.error('Failed to delete expense:', response.status);
             }
@@ -66,22 +71,24 @@ function Report() {
         .catch((error) => console.error('Error deleting expense:', error));
     };
 
-    const toggleEdit = (id) => {
-        setEditingId(id === editingId ? null : id);
+    const toggleEdit = (expenseid) => {
+        setEditingId(expenseid === editingId ? null : expenseid);
     };
 
-    const updateExpense = (id) => {
-        const originalExpense = expenses.find((expense) => expense.id === id);
-        fetch(`http://localhost:8080/api/expenses/${id}`, {
+    const updateExpense = (expenseid) => {
+        const originalExpense = expenses.find((expense) => expense.expense === expenseid);
+        fetch(`http://localhost:8080/api/expenses/${username}/${expenseid}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
             },
             body: JSON.stringify({
-              id: id,
+              id: username,
+              expense: expenseid,
               name: editingName || originalExpense.name,
               amount: editingAmount || originalExpense.amount,
-              category: editingCategory || originalExpense.category
+              category: editingCategory || originalExpense.category,
+              type: originalExpense.type
             }),
         })
             .then((response) => {
@@ -90,13 +97,16 @@ function Report() {
                     setEditingId(null);
                     setEditingName('');
                     setEditingAmount('');
-                    setEditingCategory('');
+                    setEditingCategory('misc');
                 } else {
                     console.error('Failed to update expense:', response.status);
                 }
             })
             .catch((error) => console.error('Error updating expense:', error));
     };
+
+    const sortBy = 'time';
+    const sortOrder = 'asc';
 
     const sortedExpenses = expenses.sort((a, b) => {
         const dateA = new Date(a.time);
@@ -109,16 +119,30 @@ function Report() {
         return 0;
     });
 
-    const totalExpenses = expenses.reduce((total, expense) => total + parseFloat(expense.amount), 0);
+    const totalIncome = expenses
+        .filter((expense) => expense.type === 'income')
+        .reduce((total, income) => total + parseFloat(income.amount), 0);
 
+    const totalExpense = expenses
+        .filter((expense) => expense.type === 'expense')
+        .reduce((total, expense) => total + parseFloat(expense.amount), 0);
+
+    const balance = totalIncome - totalExpense;
+
+    const titleCase = (string) => {
+      return string.charAt(0).toUpperCase() + string.slice(1);
+    };
+
+    const isButtonDisabled = !name || !amount || !category || !type;
 
   return (
     <div className="mx-auto bg-gray">
-      <h1 className="text-3xl bg-teal-500 text-white px-8 py-4 font-semibold mb-4 ">Expense Tracker</h1>
       <div className="grid grid-cols-3 gap-4 p-4">
         <div className="col-span-2">
-        <div className="bg-white p-8 rounded-lg">
-            <h2 className="text-xl font-semibold ">Total Expenses: ₹{totalExpenses.toFixed(2)}</h2>
+        <div className="bg-white p-8 rounded-lg flex justify-between">
+          <h2 className="text-xl font-semibold mb-2">Balance: ₹{balance.toFixed(2)}</h2>
+          <h2 className="text-xl font-semibold mb-2 text-green-500">Income: ₹{totalIncome.toFixed(2)}</h2>
+          <h2 className="text-xl font-semibold mb-2 text-red-500">Expense: ₹{totalExpense.toFixed(2)}</h2>
         </div>
       <div className="mt-4 bg-white p-8 rounded-lg">
         <h2 className="text-xl font-semibold mb-2">History</h2>
@@ -135,7 +159,7 @@ function Report() {
             {sortedExpenses.map((expense, index) => (
               <tr key={index} className="odd:bg-gray-100">
                 <td className="w-40 text-center">
-                    {editingId === expense.id ? (
+                    {editingId === expense.expense ? (
                         <input
                             type="text"
                             className="border w-36 rounded text-center"
@@ -147,8 +171,8 @@ function Report() {
                             expense.name
                     )}
                 </td>
-                <td className="w-40 text-center">
-                    {editingId === expense.id ? (
+                <td className={`w-40 text-center font-bold ${expense.type === 'income' ? 'text-green-500' : 'text-red-500'}`}>
+                    {editingId === expense.expense ? (
                         <input
                             type="text"
                             className="border w-36 rounded text-center"
@@ -157,27 +181,29 @@ function Report() {
                             placeholder={expense.amount}
                         />
                         ) : (
-                            expense.amount
+                          <div>
+                            {expense.type === 'income' ? '+' : '-'}₹{expense.amount}
+                          </div>   
                     )}
                 </td>
                 <td className="w-40 text-center">
-                    {editingId === expense.id ? (
+                    {editingId === expense.expense ? (
                         <input
                             type="text"
                             className="border w-36 rounded text-center"
                             value={editingCategory}
                             onChange={(e) => setEditingCategory(e.target.value)}
-                            placeholder={expense.category}
+                            placeholder={titleCase(expense.category)}
                         />
                         ) : (
-                            expense.category
+                            titleCase(expense.category)
                     )}
                 </td>
                 <td className="w-48 text-center">{moment(expense.time).format('MMM D, hh:mm A ')}</td>
                 <td className="p-2 w-24 text-center">
-                    {editingId === expense.id ? (
+                    {editingId === expense.expense ? (
                         <div className="px-2">
-                            <button onClick={() => updateExpense(expense.id)}>
+                            <button onClick={() => updateExpense(expense.expense)}>
                                 <img width="20px" style={{color: "red"}} src={SaveIcon} alt="SaveIcon" />
                             </button>
                             <button onClick={() => setEditingId(null)}>
@@ -185,13 +211,13 @@ function Report() {
                             </button>
                         </div>
                     ) : (
-                        <button onClick={() => toggleEdit(expense.id)}>
+                        <button onClick={() => toggleEdit(expense.expense)}>
                             <img width="20px" style={{color: "red"}} src={EditIcon} alt="EditIcon" />
                         </button>
                     )}
                 </td>
                 <td className="w-24 p-2 text-center">
-                  <button onClick={() => deleteExpense(expense.id)}>
+                  <button onClick={() => deleteExpense(expense.expense)}>
                     <img width="20px" style={{color: "red"}} src={DeleteIcon} alt="DeleteIcon" />
                   </button>
                 </td>
@@ -202,11 +228,10 @@ function Report() {
       </div>
       </div>
       <div className="h-max bg-white p-8 rounded-lg">
-      <h2 className="text-xl font-semibold mb-4">Add Expense</h2>
       <div className="mb-4">
+      <label className="block text-sm mb-2 font-medium text-gray-700">Name:</label>
         <input
           type="text"
-          placeholder="Name"
           className="w-full p-2 border rounded"
           value={name}
           onChange={(e) => setName(e.target.value)}
@@ -214,30 +239,68 @@ function Report() {
       </div>
 
       <div className="mb-4">
+      <label className="block text-sm mb-2 font-medium text-gray-700">Amount:</label>
         <input
           type="number"
-          placeholder="Amount"
           className="w-full p-2 border rounded"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
         />
       </div>
+      
+      {type === 'expense' && (
+        <div className="mb-4">
+          <label className="block text-sm mb-2 font-medium text-gray-700">Category:</label>
+          <select
+            className="w-full p-2 border rounded"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+           >
+            <option value="rent">Rent</option>
+            <option value="utility">Utility</option>
+            <option value="health">Health</option>
+            <option value="grocery">Grocery</option>
+            <option value="leisure">Leisure</option>
+            <option value="travel">Travel</option>
+            <option value="misc">Misc</option>
+          </select>
+        </div>
+      )}
 
-      <div className="mb-4">
-        <input
-          type="text"
-          placeholder="Category"
-          className="w-full p-2 border rounded"
-          value={category}
-          onChange={(e) => setCategory(e.target.value)}
-        />
+      {type === 'income' && (
+        <div className="mb-4">
+          <label className="block text-sm mb-2 font-medium text-gray-700">Category:</label>
+            <select
+              className="w-full p-2 border rounded"
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+            >
+              <option value="salary">Salary</option>
+              <option value="gift">Gift</option>
+              <option value="freelance">Freelance</option>
+              <option value="misc">Misc</option>
+            </select>
+        </div>
+      )}
+
+      <div className="mb-8">
+        <label className="block text-sm mb-2 font-medium text-gray-700">Type:</label>
+          <select
+            className="w-full p-2 border rounded"
+            value={type}
+            onChange={(e) => setType(e.target.value)}
+          >
+          <option value="expense">Expense</option>
+          <option value="income">Income</option>
+        </select>
       </div>
 
       <button
         onClick={addExpense}
-        className="bg-teal-500 w-full text-white px-3 py-2 font-semibold rounded hover:bg-teal-600"
+        className={` w-full text-white px-3 py-2 font-semibold rounded  ${isButtonDisabled ? 'opacity-50 cursor-not-allowed bg-slate-500' : 'bg-teal-500 hover:bg-teal-600'}`}
+        disabled={isButtonDisabled}
       >
-        Add
+        {type === 'expense' ? 'Add Expense' : 'Add Income'}
       </button>
       </div>
       </div>
